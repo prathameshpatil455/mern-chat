@@ -1,19 +1,119 @@
+import { useContext, useEffect, useState } from "react";
+import Avatar from "./Avatar";
+import Logo from "./Logo";
+import { UserContext } from "./UserContext";
+import {uniqBy} from "loadash";
+
 export default function Chat() {
+
+  const [ws, setWs] = useState(null);
+  const [onlinePeople, setOnlinePeople] = useState({});
+  const [selectedUserId, setSelectedUserId] = useState(null);
+  const {username, id} = useContext(UserContext);
+  const [newMessageText, setNewMessageText] = useState("");
+  const [messages, setMessages] = useState([]);
+
+  useEffect(() => {
+    const ws = new WebSocket('ws://localhost:4040');
+    setWs(ws);
+    ws.addEventListener('message', handleMessage )
+  }, []);
+
+  function showOnlinePeople(peopleArray) {
+    const people = {};
+    peopleArray.forEach(({userId, username}) => {
+      people[userId] = username;
+    });
+    setOnlinePeople(people);
+  }
+
+  function handleMessage(event) {
+    const messageData = JSON.parse(event.data);
+    console.log({event, messageData});
+    if ('online' in messageData) {
+      showOnlinePeople(messageData.online);
+    }
+    else if ('text' in messageData) {
+      setMessages(prev => ([...prev, {...messageData}]));
+    }
+  }
+
+  function sendMessage(ev) {
+    ev.preventDefault();
+    ws.send(JSON.stringify({
+        recipient: selectedUserId,
+        text: newMessageText,
+    }));
+    setNewMessageText("");
+    setMessages(prev => ([...prev, {
+      text: newMessageText,
+      sender: id, 
+      recipient: selectedUserId, 
+    }]));
+  }
+
+  const onlinePeopleExclOurUser = {...onlinePeople};
+  delete onlinePeopleExclOurUser[id];
+
+  const messagesWithoutDupes = uniqBy(messages, '_id');
+
   return (
     <div className="flex h-screen">
-      <div className="bg-white w-1/3">contacts</div>
+      <div className="bg-white w-1/3">
+        <Logo />
+        {Object.keys(onlinePeopleExclOurUser).map(userId => (
+          <div className={"border-b border-gray-100  flex items-center gap-2 cursor-pointer"+ (userId === selectedUserId ? "bg-blue-200" : '')}
+           key={userId}
+           onClick={() => setSelectedUserId(userId)}>
+            {
+              userId === selectedUserId && (
+                <div className="w-1 bg-blue-500 h-12 rounded-r-md"></div>
+              )
+            }
+            <div className="flex gap-2 py-2 pl-4 items-center">
+              <Avatar username={onlinePeople[userId]} userId={userId} />
+              <span className="text-gray-800">{onlinePeople[userId]}</span>
+            </div>
+            
+          </div>
+        ))}
+      </div>
 
       <div className="flex flex-col bg-blue-50 w-2/3 p-2">
         <div className="flex-grow">
-          messages with selected person
+          {
+            !selectedUserId && (
+              <div className="flex h-full items-center justify-center">
+                <div className="text-gray-400 ">
+                  &larr; Select a person 
+                </div>
+              </div>
+            )
+          }
+          {
+            !!selectedUserId && (
+              <div>
+                {messagesWithoutDupes.map(message => (
+                  <div>
+                    {message.sender === id ? 'ME' : ''}
+                    {message.text}
+                  </div>
+                ))}
+              </div>
+            )
+          }
         </div>
-        <div className="flex gap-2">
+
+        {!!selectedUserId && (
+          <form className="flex gap-2" onSubmit={sendMessage}>
           <input
+            value={newMessageText}
+            onChange={ev => setNewMessageText(ev.target.value)}
             type="text"
             placeholder="type your message here"
             className="bg-white flex-grow border p-2 rounded-sm "
           />
-          <button className="bg-blue-500 p-2 text-white rounded-sm">
+          <button type="submit" className="bg-blue-500 p-2 text-white rounded-sm">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 24 24"
@@ -27,7 +127,9 @@ export default function Chat() {
               />
             </svg>
           </button>
-        </div>
+        </form>
+        )}
+        
       </div>
     </div>
   );
