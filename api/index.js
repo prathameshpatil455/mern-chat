@@ -25,11 +25,38 @@ app.use(cookieParser());
 app.use(cors({
     credentials: true,
     origin: process.env.CLIENT_URL,
-}))
+}));
+
+async function getUserDataFromRequest(req) {
+  return new Promise((resolve, reject) => {
+    const token = req.cookies?.token;
+    if (token) {
+      jwt.verify(token, jwtSecret, {}, (err, userData) => {
+        if (err) throw err;
+        resolve(userData);
+      });
+    } else {
+      reject('no token');
+    }
+  });
+
+}
 
 
 app.get('/test', (req, res) => {
     res.json('test ok');
+});
+
+
+app.get('/messages/:userId', async (req,res) => {
+  const {userId} = req.params;
+  const userData = await getUserDataFromRequest(req);
+  const ourUserId = userData.userId;
+  const messages = await Message.find({
+    sender:{$in:[userId,ourUserId]},
+    recipient:{$in:[userId,ourUserId]},
+  }).sort({createdAt: 1});
+  res.json(messages);
 });
 
 
@@ -122,7 +149,7 @@ wss.on("connection", (connection, req) => {
         text,
         sender:connection.userId,
         recipient,
-        id:messageDoc._id,
+        _id:messageDoc._id,
       })));
      }
   });
